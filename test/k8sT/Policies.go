@@ -1596,7 +1596,7 @@ var _ = Describe("K8sPolicyTest", func() {
 				Expect(err).To(BeNil(), fmt.Sprintf("Error parsing JSON response: %s", res.Stdout()))
 			}
 		}
-		SkipItIf(helpers.SkipQuarantined, "checks policy example", func() {
+		It("checks policy example", func() {
 
 			waitforPods()
 
