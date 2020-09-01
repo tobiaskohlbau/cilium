@@ -62,29 +62,34 @@ type AllocatorOperator struct {
 
 // Init sets up Cilium allocator based on given options
 func (a *AllocatorOperator) Init() error {
-	if len(operatorOption.Config.ClusterPoolIPv4CIDR) != 0 {
-		if !option.Config.EnableIPv4 {
-			return errors.New("IPv4CIDR can not be set if IPv4 is not enabled")
+	if option.Config.EnableIPv4 {
+		if len(operatorOption.Config.ClusterPoolIPv4CIDR) == 0 {
+			return fmt.Errorf("%s must be provided when using ClusterPool", operatorOption.ClusterPoolIPv4CIDR)
 		}
+
 		v4Allocators, err := newCIDRSets(false, operatorOption.Config.ClusterPoolIPv4CIDR, operatorOption.Config.NodeCIDRMaskSizeIPv4)
 		if err != nil {
 			return fmt.Errorf("unable to initialize IPv4 allocator %w", err)
 		}
 		a.v4CIDRSet = v4Allocators
+	} else if len(operatorOption.Config.ClusterPoolIPv4CIDR) != 0 {
+		return errors.New("ClusterPool IPv4 CIDR can not be set if IPv4 is disabled")
 	}
-	if len(operatorOption.Config.ClusterPoolIPv6CIDR) != 0 {
-		if !option.Config.EnableIPv6 {
-			return errors.New("IPv6CIDR can not be set if IPv6 is not enabled")
+
+	if option.Config.EnableIPv6 {
+		if len(operatorOption.Config.ClusterPoolIPv6CIDR) == 0 {
+			return fmt.Errorf("%s must be provided when using ClusterPool", operatorOption.ClusterPoolIPv6CIDR)
 		}
+
 		v6Allocators, err := newCIDRSets(true, operatorOption.Config.ClusterPoolIPv6CIDR, operatorOption.Config.NodeCIDRMaskSizeIPv6)
 		if err != nil {
 			return fmt.Errorf("unable to initialize IPv6 allocator %w", err)
 		}
 		a.v6CIDRSet = v6Allocators
+	} else if len(operatorOption.Config.ClusterPoolIPv6CIDR) != 0 {
+		return errors.New("ClusterPool IPv6 CIDR can not be set if IPv6 is disabled")
 	}
-	if len(a.v4CIDRSet)+len(a.v6CIDRSet) == 0 {
-		return fmt.Errorf("either '%s' or '%s' need to be set", operatorOption.ClusterPoolIPv4CIDR, operatorOption.ClusterPoolIPv6CIDR)
-	}
+
 	return nil
 }
 
