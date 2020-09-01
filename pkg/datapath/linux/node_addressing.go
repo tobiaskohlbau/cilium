@@ -26,9 +26,6 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// FIXME: This currently maps to the code in pkg/node/node_address.go. That
-// code should really move into this package.
-
 func listLocalAddresses(family int) ([]net.IP, error) {
 	ipsToExclude := node.GetExcludedIPs()
 	addrs, err := netlink.AddrList(nil, family)
@@ -67,7 +64,32 @@ func listLocalAddresses(family int) ([]net.IP, error) {
 	return addresses, nil
 }
 
-type addressFamilyIPv4 struct{}
+func listSubnetAddresses(nets []net.IPNet) []net.IP {
+	var ips []net.IP
+	for _, nt := range nets {
+		for ip := nt.IP.Mask(nt.Mask); nt.Contains(ip); ip = incIP(ip) {
+			ips = append(ips, ip)
+		}
+	}
+	return ips
+}
+
+func incIP(ip net.IP) net.IP {
+	ipL := len(ip)
+	ipn := make(net.IP, ipL)
+	copy(ipn, ip)
+	for j := ipL - 1; j >= 0; j-- {
+		ipn[j]++
+		if ipn[j] > 0 {
+			break
+		}
+	}
+	return ipn
+}
+
+type addressFamilyIPv4 struct {
+	subnetOverride []net.IPNet
+}
 
 func (a *addressFamilyIPv4) Router() net.IP {
 	return node.GetInternalIPv4()
@@ -82,6 +104,9 @@ func (a *addressFamilyIPv4) AllocationCIDR() *cidr.CIDR {
 }
 
 func (a *addressFamilyIPv4) LocalAddresses() ([]net.IP, error) {
+	if len(a.subnetOverride) > 0 {
+		return listSubnetAddresses(a.subnetOverride), nil
+	}
 	return listLocalAddresses(netlink.FAMILY_V4)
 }
 
@@ -93,7 +118,9 @@ func (a *addressFamilyIPv4) LoadBalancerNodeAddresses() []net.IP {
 	return addrs
 }
 
-type addressFamilyIPv6 struct{}
+type addressFamilyIPv6 struct {
+	subnetOverride []net.IPNet
+}
 
 func (a *addressFamilyIPv6) Router() net.IP {
 	return node.GetIPv6Router()
@@ -108,6 +135,9 @@ func (a *addressFamilyIPv6) AllocationCIDR() *cidr.CIDR {
 }
 
 func (a *addressFamilyIPv6) LocalAddresses() ([]net.IP, error) {
+	if len(a.subnetOverride) > 0 {
+		return listSubnetAddresses(a.subnetOverride), nil
+	}
 	return listLocalAddresses(netlink.FAMILY_V6)
 }
 
@@ -125,8 +155,24 @@ type linuxNodeAddressing struct {
 }
 
 // NewNodeAddressing returns a new linux node addressing model
-func NewNodeAddressing() datapath.NodeAddressing {
-	return &linuxNodeAddressing{}
+func NewNodeAddressing(subnetOverrides []net.IPNet) datapath.NodeAddressing {
+	var ipv4Nets []net.IPNet
+	var ipv6Nets []net.IPNet
+	for _, n := range subnetOverrides {
+		if n.IP.To4() != nil {
+			ipv4Nets = append(ipv4Nets, n)
+		} else {
+			ipv6Nets = append(ipv6Nets, n)
+		}
+	}
+	return &linuxNodeAddressing{
+		ipv6: addressFamilyIPv6{
+			subnetOverride: ipv6Nets,
+		},
+		ipv4: addressFamilyIPv4{
+			subnetOverride: ipv4Nets,
+		},
+	}
 }
 
 func (n *linuxNodeAddressing) IPv6() datapath.NodeAddressingFamily {
